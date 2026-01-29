@@ -2,6 +2,7 @@ package com.example.demo.entity;
 
 import lombok.*;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +17,9 @@ public class Product {
 
     @Id
     private String id; // MongoDB IDs are Strings (e.g., "650c1f...")
+
+    @Indexed(unique = true)
+    private String productId;
 
     private String name;
     private String description;

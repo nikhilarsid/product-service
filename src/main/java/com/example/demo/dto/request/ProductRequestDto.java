@@ -9,6 +9,9 @@ import java.util.Map;
 @Data
 public class ProductRequestDto {
 
+    @NotBlank(message = "Custom Product ID is required")
+    private String productId;
+
     @NotBlank(message = "Product name is required")
     private String name;
 
