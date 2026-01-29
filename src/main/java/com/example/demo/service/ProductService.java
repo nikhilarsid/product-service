@@ -9,4 +9,6 @@ public interface ProductService {
     ProductResponseDto getProductById(String id);
     List<ProductResponseDto> getAllProducts();
     List<ProductResponseDto> searchProducts(String keyword);
+
+    //List<ProductResponseDto> getAllProducts();
 }

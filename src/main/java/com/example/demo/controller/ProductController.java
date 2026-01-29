@@ -39,4 +39,10 @@ public class ProductController {
         List<ProductResponseDto> products = productService.searchProducts(keyword);
         return ResponseEntity.ok(ApiResponse.success(products, "Search results fetched"));
     }
+
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<ProductResponseDto>>> getAllProducts() {
+        List<ProductResponseDto> products = productService.getAllProducts();
+        return ResponseEntity.ok(ApiResponse.success(products, "All products fetched successfully"));
+    }
 }
