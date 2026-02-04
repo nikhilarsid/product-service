@@ -20,21 +20,24 @@ public class ProductController {
 
     private final ProductService productService;
 
-    // 1. Create/Add Offer (Merchant Only)
     @PostMapping
     public ResponseEntity<ApiResponse<ProductDisplayDto>> addProduct(@Valid @RequestBody ProductRequestDto request) {
         ProductDisplayDto response = productService.addProduct(request);
         return new ResponseEntity<>(ApiResponse.success(response, "Product listing updated successfully"), HttpStatus.CREATED);
     }
 
-    // 2. Get All Products (Flattened List for Search/Home)
     @GetMapping
     public ResponseEntity<ApiResponse<List<ProductDisplayDto>>> getAllProducts() {
         return ResponseEntity.ok(ApiResponse.success(productService.getAllProducts(), "Fetched all variants"));
     }
 
-    // 3. ✅ NEW: Get Product Detail Page (Public)
-    // Usage: GET /api/v1/products/101?variantId=...
+    // ✅ NEW: Dashboard for Merchant to see ONLY their items
+    @GetMapping("/my-listings")
+    public ResponseEntity<ApiResponse<List<ProductDisplayDto>>> getMyListings() {
+        List<ProductDisplayDto> myListings = productService.getMerchantProducts();
+        return ResponseEntity.ok(ApiResponse.success(myListings, "Merchant listings fetched"));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<ProductDetailDto>> getProductDetails(
             @PathVariable Integer id,
@@ -44,8 +47,6 @@ public class ProductController {
         return ResponseEntity.ok(ApiResponse.success(details, "Product details fetched"));
     }
 
-    // 4. ✅ NEW: Update Inventory (Merchant Only)
-    // Usage: PUT /api/v1/products/inventory/101?variantId=...&price=999&stock=50
     @PutMapping("/inventory/{id}")
     public ResponseEntity<ApiResponse<Void>> updateInventory(
             @PathVariable Integer id,
@@ -57,8 +58,6 @@ public class ProductController {
         return ResponseEntity.ok(ApiResponse.success(null, "Inventory updated successfully"));
     }
 
-    // 5. ✅ NEW: Remove Product/Offer (Merchant Only)
-    // Usage: DELETE /api/v1/products/inventory/101?variantId=...
     @DeleteMapping("/inventory/{id}")
     public ResponseEntity<ApiResponse<Void>> removeInventory(
             @PathVariable Integer id,

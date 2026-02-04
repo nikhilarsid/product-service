@@ -33,7 +33,6 @@ public class ProductServiceImpl implements ProductService {
         String merchantId = getMerchantIdFromToken();
         String normalizedName = request.getName().trim().toLowerCase().replaceAll("[^a-z0-9]", "");
 
-        // 1. Check if Parent Product exists
         Optional<Product> existingProductOpt = productRepository.findByNormalizedNameAndBrandIgnoreCase(
                 normalizedName, request.getBrand()
         );
@@ -41,39 +40,31 @@ public class ProductServiceImpl implements ProductService {
         Product product;
         if (existingProductOpt.isPresent()) {
             product = existingProductOpt.get();
-            // Note: If you want to merge new categories into existing ones, add logic here.
         } else {
-            // Create New Parent Product
             product = Product.builder()
                     .productId(sequenceGeneratorService.generateSequence(Product.SEQUENCE_NAME))
                     .normalizedName(normalizedName)
                     .name(request.getName())
                     .brand(request.getBrand())
                     .description(request.getDescription())
-                    .categories(request.getCategories()) // ✅ List<String>
-                    .specs(request.getSpecs())           // ✅ Global Specs
+                    .categories(request.getCategories())
+                    .specs(request.getSpecs())
                     .isActive(true)
                     .variants(new ArrayList<>())
                     .build();
         }
 
-        // 2. Handle Variant
         ProductVariant targetVariant = findMatchingVariant(product, request.getAttributes());
 
         if (targetVariant == null) {
-            // Create New Variant
             targetVariant = new ProductVariant();
             targetVariant.setVariantId(UUID.randomUUID().toString());
             targetVariant.setAttributes(request.getAttributes());
-
-            // ✅ Assign Images to this specific variant (e.g., Black Phone Images)
             targetVariant.setImageUrls(request.getImageUrls());
-
             targetVariant.setOffers(new ArrayList<>());
             product.getVariants().add(targetVariant);
         }
 
-        // 3. Update Merchant Offer
         targetVariant.getOffers().removeIf(offer -> offer.getMerchantId().equals(merchantId));
 
         MerchantOffer offer = new MerchantOffer(
@@ -84,9 +75,7 @@ public class ProductServiceImpl implements ProductService {
         );
         targetVariant.getOffers().add(offer);
 
-        // 4. Save
         Product savedProduct = productRepository.save(product);
-
         return mapToDisplayDto(savedProduct, targetVariant);
     }
 
@@ -103,6 +92,29 @@ public class ProductServiceImpl implements ProductService {
             }
         }
         return displayList;
+    }
+
+    // ✅ NEW: Logic to filter by Merchant ID
+    @Override
+    public List<ProductDisplayDto> getMerchantProducts() {
+        String merchantId = getMerchantIdFromToken();
+        List<Product> products = productRepository.findAll();
+        List<ProductDisplayDto> merchantList = new ArrayList<>();
+
+        for (Product product : products) {
+            if (product.getVariants() != null) {
+                for (ProductVariant variant : product.getVariants()) {
+                    // Check if this variant has an offer from THIS merchant
+                    boolean hasMerchantOffer = variant.getOffers().stream()
+                            .anyMatch(offer -> offer.getMerchantId().equals(merchantId));
+
+                    if (hasMerchantOffer) {
+                        merchantList.add(mapToDisplayDto(product, variant));
+                    }
+                }
+            }
+        }
+        return merchantList;
     }
 
     @Override
@@ -129,9 +141,9 @@ public class ProductServiceImpl implements ProductService {
                 .name(product.getName())
                 .brand(product.getBrand())
                 .description(product.getDescription())
-                .categories(product.getCategories()) // ✅ List<String>
-                .specs(product.getSpecs())           // ✅ Global Specs
-                .imageUrls(variant.getImageUrls())   // ✅ Return variant-specific images
+                .categories(product.getCategories())
+                .specs(product.getSpecs())
+                .imageUrls(variant.getImageUrls())
                 .variantId(variant.getVariantId())
                 .attributes(variant.getAttributes())
                 .sellers(sellerList)
@@ -186,8 +198,6 @@ public class ProductServiceImpl implements ProductService {
         productRepository.save(product);
     }
 
-    // --- Helpers ---
-
     private String getMerchantIdFromToken() {
         String authHeader = httpRequest.getHeader("Authorization");
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
@@ -198,7 +208,6 @@ public class ProductServiceImpl implements ProductService {
 
     private ProductVariant findMatchingVariant(Product product, Map<String, String> attributes) {
         if (product.getVariants() == null) return null;
-
         for (ProductVariant variant : product.getVariants()) {
             if (variant.getAttributes().equals(attributes)) {
                 return variant;
@@ -217,7 +226,6 @@ public class ProductServiceImpl implements ProductService {
                 .mapToInt(MerchantOffer::getStock)
                 .sum();
 
-        // Logic: Use variant-specific image if available, else null/placeholder
         String thumbnail = (variant.getImageUrls() != null && !variant.getImageUrls().isEmpty())
                 ? variant.getImageUrls().get(0)
                 : null;
@@ -227,8 +235,8 @@ public class ProductServiceImpl implements ProductService {
                 .name(product.getName())
                 .brand(product.getBrand())
                 .description(product.getDescription())
-                .imageUrl(thumbnail) // ✅ Shows specific variant thumbnail
-                .categories(product.getCategories()) // ✅ List<String>
+                .imageUrl(thumbnail)
+                .categories(product.getCategories())
                 .attributes(variant.getAttributes())
                 .lowestPrice(minPrice)
                 .totalMerchants(variant.getOffers().size())

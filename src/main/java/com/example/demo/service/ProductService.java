@@ -9,10 +9,11 @@ public interface ProductService {
     ProductDisplayDto addProduct(ProductRequestDto request);
     List<ProductDisplayDto> getAllProducts();
 
-    // ✅ NEW: Get full details (Product Page)
+    // ✅ NEW: Get only the products listed by the logged-in merchant
+    List<ProductDisplayDto> getMerchantProducts();
+
     ProductDetailDto getProductDetails(Integer productId, String variantId);
 
-    // ✅ NEW: Merchant Actions
     void updateInventory(Integer productId, String variantId, Double newPrice, Integer newStock);
     void removeInventory(Integer productId, String variantId);
 }
