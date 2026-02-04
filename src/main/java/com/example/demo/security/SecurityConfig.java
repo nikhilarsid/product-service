@@ -9,7 +9,6 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-// ✅ Imports needed for CORS
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -27,16 +26,23 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
-                // ✅ ADDED: Enable CORS
+                // ✅ Enable CORS
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
 
                 .authorizeHttpRequests(auth -> auth
-                        // Public Access: Anyone can view/search products
+                        // 1. Public Access: Anyone can view/search individual products
                         .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
 
-                        // Restricted Access: Only Merchants can create new products
+                        // ✅ 2. FIX: Allow Batch Retrieve (POST) for Everyone
+                        // This allows the Cart Service or Frontend to fetch details for a list of IDs.
+                        // We permitAll() because product details are public info.
+                        .requestMatchers(HttpMethod.POST, "/api/v1/products/batch").permitAll()
+
+                        // 3. Restricted Access: Only Merchants can create new products
+                        // This matches all OTHER POST requests to /products
                         .requestMatchers(HttpMethod.POST, "/api/v1/products/**").hasAuthority("ROLE_MERCHANT")
 
+                        // 4. Any other request requires authentication
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -45,13 +51,13 @@ public class SecurityConfig {
         return http.build();
     }
 
-    // ✅ ADDED: CORS Configuration Bean
+    // ✅ CORS Configuration Bean
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
         // Allow your React Frontend Ports
-        configuration.setAllowedOrigins(List.of("http://localhost:5173", "http://localhost:5174","http://localhost:3001"));
+        configuration.setAllowedOrigins(List.of("http://localhost:5173", "http://localhost:5174", "http://localhost:3001"));
 
         // Allow standard HTTP methods
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));

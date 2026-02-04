@@ -1,23 +1,24 @@
 package com.example.demo.dto.response;
 
+import lombok.Builder;
 import lombok.Data;
 import java.util.List;
 import java.util.Map;
 
 @Data
-public class ProductResponseDto {
-    private String id;
+@Builder
+public class ProductDisplayDto {
     private Integer productId;
     private String name;
+    private String brand;
     private String description;
+    private String imageUrl; // Thumbnail
 
-    // ❌ REMOVE: private String category;
-    // ✅ ADD: Must match Entity field name exactly for BeanUtils
+    // ✅ CHANGED: String -> List<String>
     private List<String> categories;
 
-    private String brand;
-    private List<String> imageUrls;
     private Map<String, String> attributes;
-    private Boolean isActive;
+    private Double lowestPrice;
+    private Integer totalMerchants;
     private boolean inStock;
 }

@@ -3,11 +3,12 @@ package com.example.demo.repository;
 import com.example.demo.entity.Product;
 import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.stereotype.Repository;
-import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ProductRepository extends MongoRepository<Product, String> {
-    // Custom finders for Search Service integration later
-    List<Product> findByCategory(String category);
-    List<Product> findByNameContainingIgnoreCase(String name);
+    Optional<Product> findByProductId(Integer productId);
+
+    // Find parent product by name (case insensitive logic handled in service or regex)
+    Optional<Product> findByNormalizedNameAndBrandIgnoreCase(String normalizedName, String brand);
 }

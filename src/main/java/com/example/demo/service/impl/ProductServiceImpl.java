@@ -1,20 +1,22 @@
 package com.example.demo.service.impl;
 
 import com.example.demo.dto.request.ProductRequestDto;
-import com.example.demo.dto.response.ProductResponseDto;
+import com.example.demo.dto.response.MerchantOfferDto;
+import com.example.demo.dto.response.ProductDetailDto;
+import com.example.demo.dto.response.ProductDisplayDto;
+import com.example.demo.entity.MerchantOffer;
 import com.example.demo.entity.Product;
+import com.example.demo.entity.ProductVariant;
 import com.example.demo.exception.ResourceNotFoundException;
 import com.example.demo.repository.ProductRepository;
 import com.example.demo.service.ProductService;
+import com.example.demo.service.SequenceGeneratorService;
+import com.example.demo.security.JwtService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
-import org.bson.Document; // ✅ Added
-import org.springframework.beans.BeanUtils;
-import org.springframework.data.mongodb.core.MongoTemplate; // ✅ Added
-import org.springframework.data.mongodb.core.aggregation.Aggregation; // ✅ Added
 import org.springframework.stereotype.Service;
 
-import java.util.Arrays; // ✅ Added
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -22,81 +24,215 @@ import java.util.stream.Collectors;
 public class ProductServiceImpl implements ProductService {
 
     private final ProductRepository productRepository;
-    private final MongoTemplate mongoTemplate; // ✅ Added for Atlas Search
+    private final SequenceGeneratorService sequenceGeneratorService;
+    private final JwtService jwtService;
+    private final HttpServletRequest httpRequest;
 
     @Override
-    public ProductResponseDto createProduct(ProductRequestDto request) {
-        Product product = new Product();
-        BeanUtils.copyProperties(request, product);
-        product.setIsActive(true);
+    public ProductDisplayDto addProduct(ProductRequestDto request) {
+        String merchantId = getMerchantIdFromToken();
+        String normalizedName = request.getName().trim().toLowerCase().replaceAll("[^a-z0-9]", "");
 
+        // 1. Check if Parent Product exists
+        Optional<Product> existingProductOpt = productRepository.findByNormalizedNameAndBrandIgnoreCase(
+                normalizedName, request.getBrand()
+        );
+
+        Product product;
+        if (existingProductOpt.isPresent()) {
+            product = existingProductOpt.get();
+            // Note: If you want to merge new categories into existing ones, add logic here.
+        } else {
+            // Create New Parent Product
+            product = Product.builder()
+                    .productId(sequenceGeneratorService.generateSequence(Product.SEQUENCE_NAME))
+                    .normalizedName(normalizedName)
+                    .name(request.getName())
+                    .brand(request.getBrand())
+                    .description(request.getDescription())
+                    .categories(request.getCategories()) // ✅ List<String>
+                    .specs(request.getSpecs())           // ✅ Global Specs
+                    .isActive(true)
+                    .variants(new ArrayList<>())
+                    .build();
+        }
+
+        // 2. Handle Variant
+        ProductVariant targetVariant = findMatchingVariant(product, request.getAttributes());
+
+        if (targetVariant == null) {
+            // Create New Variant
+            targetVariant = new ProductVariant();
+            targetVariant.setVariantId(UUID.randomUUID().toString());
+            targetVariant.setAttributes(request.getAttributes());
+
+            // ✅ Assign Images to this specific variant (e.g., Black Phone Images)
+            targetVariant.setImageUrls(request.getImageUrls());
+
+            targetVariant.setOffers(new ArrayList<>());
+            product.getVariants().add(targetVariant);
+        }
+
+        // 3. Update Merchant Offer
+        targetVariant.getOffers().removeIf(offer -> offer.getMerchantId().equals(merchantId));
+
+        MerchantOffer offer = new MerchantOffer(
+                merchantId,
+                "Merchant " + merchantId,
+                request.getPrice(),
+                request.getQuantity()
+        );
+        targetVariant.getOffers().add(offer);
+
+        // 4. Save
         Product savedProduct = productRepository.save(product);
-        return mapToDto(savedProduct);
+
+        return mapToDisplayDto(savedProduct, targetVariant);
     }
 
     @Override
-    public ProductResponseDto getProductById(String id) {
-        Product product = productRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
-        return mapToDto(product);
+    public List<ProductDisplayDto> getAllProducts() {
+        List<Product> products = productRepository.findAll();
+        List<ProductDisplayDto> displayList = new ArrayList<>();
+
+        for (Product product : products) {
+            if (product.getVariants() != null) {
+                for (ProductVariant variant : product.getVariants()) {
+                    displayList.add(mapToDisplayDto(product, variant));
+                }
+            }
+        }
+        return displayList;
     }
 
     @Override
-    public List<ProductResponseDto> getAllProducts() {
-        return productRepository.findAll().stream()
-                .map(this::mapToDto)
+    public ProductDetailDto getProductDetails(Integer productId, String variantId) {
+        Product product = productRepository.findByProductId(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
+
+        ProductVariant variant = product.getVariants().stream()
+                .filter(v -> v.getVariantId().equals(variantId))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("Variant not found with id: " + variantId));
+
+        List<MerchantOfferDto> sellerList = variant.getOffers().stream()
+                .map(offer -> MerchantOfferDto.builder()
+                        .merchantId(offer.getMerchantId())
+                        .merchantName(offer.getMerchantName())
+                        .price(offer.getPrice())
+                        .stock(offer.getStock())
+                        .build())
                 .collect(Collectors.toList());
+
+        return ProductDetailDto.builder()
+                .productId(product.getProductId())
+                .name(product.getName())
+                .brand(product.getBrand())
+                .description(product.getDescription())
+                .categories(product.getCategories()) // ✅ List<String>
+                .specs(product.getSpecs())           // ✅ Global Specs
+                .imageUrls(variant.getImageUrls())   // ✅ Return variant-specific images
+                .variantId(variant.getVariantId())
+                .attributes(variant.getAttributes())
+                .sellers(sellerList)
+                .build();
     }
 
-    // ✅ UPDATED: Now uses MongoDB Atlas Search (Index: "default")
     @Override
-    public List<ProductResponseDto> searchProducts(String keyword) {
-        Document searchStage = new Document("$search",
-                new Document("index", "default")
-                        .append("compound", new Document()
-                                .append("should", Arrays.asList(
-                                        // 1. High Priority: Autocomplete on Name (Handles Typos like "iphoen")
-                                        new Document("autocomplete", new Document()
-                                                .append("query", keyword)
-                                                .append("path", "name")
-                                                .append("fuzzy", new Document("maxEdits", 2))
-                                                .append("score", new Document("boost", new Document("value", 10)))
-                                        ),
+    public void updateInventory(Integer productId, String variantId, Double newPrice, Integer newStock) {
+        String merchantId = getMerchantIdFromToken();
 
-                                        // 2. Medium Priority: Brand or Category
-                                        new Document("text", new Document()
-                                                .append("query", keyword)
-                                                .append("path", Arrays.asList("brand", "category"))
-                                                .append("score", new Document("boost", new Document("value", 5)))
-                                        ),
+        Product product = productRepository.findByProductId(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
 
-                                        // 3. Low Priority: Description or Attributes (specs)
-                                        new Document("text", new Document()
-                                                .append("query", keyword)
-                                                .append("path", Arrays.asList("description", "attributes.*")) // Wildcard for map
-                                                .append("score", new Document("boost", new Document("value", 1)))
-                                        )
-                                ))
-                                .append("minimumShouldMatch", 1)
-                        )
-        );
+        ProductVariant variant = product.getVariants().stream()
+                .filter(v -> v.getVariantId().equals(variantId))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("Variant not found"));
 
-        // Run Aggregation
-        Aggregation aggregation = Aggregation.newAggregation(
-                context -> searchStage,
-                Aggregation.limit(20) // Limit to 20 results
-        );
+        MerchantOffer offer = variant.getOffers().stream()
+                .filter(o -> o.getMerchantId().equals(merchantId))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("You do not have an active offer for this product."));
 
-        // Convert Results to DTOs
-        return mongoTemplate.aggregate(aggregation, "products", Product.class)
-                .getMappedResults().stream()
-                .map(this::mapToDto)
-                .collect(Collectors.toList());
+        if (newPrice != null) offer.setPrice(newPrice);
+        if (newStock != null) offer.setStock(newStock);
+
+        productRepository.save(product);
     }
 
-    private ProductResponseDto mapToDto(Product product) {
-        ProductResponseDto dto = new ProductResponseDto();
-        BeanUtils.copyProperties(product, dto);
-        return dto;
+    @Override
+    public void removeInventory(Integer productId, String variantId) {
+        String merchantId = getMerchantIdFromToken();
+
+        Product product = productRepository.findByProductId(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
+
+        ProductVariant variant = product.getVariants().stream()
+                .filter(v -> v.getVariantId().equals(variantId))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("Variant not found"));
+
+        boolean removed = variant.getOffers().removeIf(o -> o.getMerchantId().equals(merchantId));
+
+        if (!removed) {
+            throw new RuntimeException("Offer not found or you are not authorized to delete it.");
+        }
+
+        if (variant.getOffers().isEmpty()) {
+            product.getVariants().remove(variant);
+        }
+
+        productRepository.save(product);
+    }
+
+    // --- Helpers ---
+
+    private String getMerchantIdFromToken() {
+        String authHeader = httpRequest.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            return jwtService.extractUsername(authHeader.substring(7));
+        }
+        throw new RuntimeException("Unauthorized");
+    }
+
+    private ProductVariant findMatchingVariant(Product product, Map<String, String> attributes) {
+        if (product.getVariants() == null) return null;
+
+        for (ProductVariant variant : product.getVariants()) {
+            if (variant.getAttributes().equals(attributes)) {
+                return variant;
+            }
+        }
+        return null;
+    }
+
+    private ProductDisplayDto mapToDisplayDto(Product product, ProductVariant variant) {
+        Double minPrice = variant.getOffers().stream()
+                .map(MerchantOffer::getPrice)
+                .min(Double::compare)
+                .orElse(0.0);
+
+        int totalStock = variant.getOffers().stream()
+                .mapToInt(MerchantOffer::getStock)
+                .sum();
+
+        // Logic: Use variant-specific image if available, else null/placeholder
+        String thumbnail = (variant.getImageUrls() != null && !variant.getImageUrls().isEmpty())
+                ? variant.getImageUrls().get(0)
+                : null;
+
+        return ProductDisplayDto.builder()
+                .productId(product.getProductId())
+                .name(product.getName())
+                .brand(product.getBrand())
+                .description(product.getDescription())
+                .imageUrl(thumbnail) // ✅ Shows specific variant thumbnail
+                .categories(product.getCategories()) // ✅ List<String>
+                .attributes(variant.getAttributes())
+                .lowestPrice(minPrice)
+                .totalMerchants(variant.getOffers().size())
+                .inStock(totalStock > 0)
+                .build();
     }
 }
