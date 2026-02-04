@@ -233,6 +233,7 @@ public class ProductServiceImpl implements ProductService {
                 .lowestPrice(minPrice)
                 .totalMerchants(variant.getOffers().size())
                 .inStock(totalStock > 0)
+                .variantId(variant.getVariantId())
                 .build();
     }
 }

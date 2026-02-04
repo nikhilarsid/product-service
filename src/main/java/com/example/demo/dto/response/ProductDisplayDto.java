@@ -21,4 +21,5 @@ public class ProductDisplayDto {
     private Double lowestPrice;
     private Integer totalMerchants;
     private boolean inStock;
+    private String variantId;
 }
