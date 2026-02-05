@@ -94,7 +94,7 @@ public class ProductServiceImpl implements ProductService {
         return displayList;
     }
 
-    // ✅ NEW: Logic to filter by Merchant ID
+    // ✅ FIXED: Logic to filter by Merchant ID correctly
     @Override
     public List<ProductDisplayDto> getMerchantProducts() {
         String merchantId = getMerchantIdFromToken();
@@ -104,12 +104,41 @@ public class ProductServiceImpl implements ProductService {
         for (Product product : products) {
             if (product.getVariants() != null) {
                 for (ProductVariant variant : product.getVariants()) {
-                    // Check if this variant has an offer from THIS merchant
-                    boolean hasMerchantOffer = variant.getOffers().stream()
-                            .anyMatch(offer -> offer.getMerchantId().equals(merchantId));
 
-                    if (hasMerchantOffer) {
-                        merchantList.add(mapToDisplayDto(product, variant));
+                    // 🔍 Step 1: Find YOUR specific offer inside this variant
+                    Optional<MerchantOffer> myOfferOpt = variant.getOffers().stream()
+                            .filter(offer -> offer.getMerchantId().equals(merchantId))
+                            .findFirst();
+
+                    // 🔍 Step 2: If found, use YOUR data (Price/Stock)
+                    if (myOfferOpt.isPresent()) {
+                        MerchantOffer myOffer = myOfferOpt.get();
+
+                        String thumbnail = (variant.getImageUrls() != null && !variant.getImageUrls().isEmpty())
+                                ? variant.getImageUrls().get(0)
+                                : null;
+
+                        ProductDisplayDto dto = ProductDisplayDto.builder()
+                                .productId(product.getProductId())
+                                .name(product.getName())
+                                .brand(product.getBrand())
+                                .description(product.getDescription())
+                                .imageUrl(thumbnail)
+                                .categories(product.getCategories())
+                                .attributes(variant.getAttributes())
+                                .variantId(variant.getVariantId())
+
+                                // ✅ FIX: Use YOUR price, not the lowest on market
+                                .lowestPrice(myOffer.getPrice())
+
+                                // ✅ FIX: Use YOUR stock count
+                                .totalMerchants(myOffer.getStock()) // We pass stock count here for the UI
+
+                                // ✅ FIX: Calculate 'In Stock' based on YOUR inventory
+                                .inStock(myOffer.getStock() > 0)
+                                .build();
+
+                        merchantList.add(dto);
                     }
                 }
             }
@@ -216,6 +245,7 @@ public class ProductServiceImpl implements ProductService {
         return null;
     }
 
+    // This method is for the PUBLIC page (Aggregates all sellers)
     private ProductDisplayDto mapToDisplayDto(Product product, ProductVariant variant) {
         Double minPrice = variant.getOffers().stream()
                 .map(MerchantOffer::getPrice)
