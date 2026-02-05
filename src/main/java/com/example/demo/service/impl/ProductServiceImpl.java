@@ -1,5 +1,9 @@
 package com.example.demo.service.impl;
-
+// Add these imports at the top
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.bson.Document;
+import com.mongodb.client.AggregateIterable;
+import com.mongodb.client.MongoCollection;
 import com.example.demo.dto.request.ProductRequestDto;
 import com.example.demo.dto.response.MerchantOfferDto;
 import com.example.demo.dto.response.ProductDetailDto;
@@ -18,16 +22,17 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.stream.Collectors;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 @Service
 @RequiredArgsConstructor
 public class ProductServiceImpl implements ProductService {
-
+    private static final Logger log = LoggerFactory.getLogger(ProductServiceImpl.class);
     private final ProductRepository productRepository;
     private final SequenceGeneratorService sequenceGeneratorService;
     private final JwtService jwtService;
     private final HttpServletRequest httpRequest;
-
+    private final MongoTemplate mongoTemplate; // Add to constructor
     @Override
     public ProductDisplayDto addProduct(ProductRequestDto request) {
         String merchantId = getMerchantIdFromToken();
@@ -273,5 +278,66 @@ public class ProductServiceImpl implements ProductService {
                 .inStock(totalStock > 0)
                 .variantId(variant.getVariantId())
                 .build();
+    }
+
+    @Override
+    public List<ProductDisplayDto> searchProducts(String query) {
+        log.info("Initiating fuzzy search for query: {}", query);
+        MongoCollection<Document> collection = mongoTemplate.getCollection("products");
+
+        List<Document> pipeline = Arrays.asList(
+                new Document("$search", new Document("index", "default")
+                        .append("text", new Document("query", query)
+                                .append("path", Arrays.asList("name", "description", "brand", "categories"))
+                                .append("fuzzy", new Document("maxEdits", 1)))),
+                new Document("$limit", 20)
+        );
+
+        return executeSearchPipeline(collection, pipeline, "Search");
+    }
+
+    @Override
+    public List<ProductDisplayDto> suggestProducts(String query) {
+        log.info("Initiating auto-suggest for query: {}", query);
+        MongoCollection<Document> collection = mongoTemplate.getCollection("products");
+
+        List<Document> pipeline = Arrays.asList(
+                new Document("$search", new Document("index", "default")
+                        .append("autocomplete", new Document("query", query)
+                                .append("path", "name")
+                                .append("fuzzy", new Document("maxEdits", 1)))),
+                new Document("$limit", 5)
+        );
+
+        return executeSearchPipeline(collection, pipeline, "Suggest");
+    }
+
+    private List<ProductDisplayDto> executeSearchPipeline(MongoCollection<Document> collection, List<Document> pipeline, String type) {
+        List<ProductDisplayDto> results = new ArrayList<>();
+
+        log.info("{} Pipeline: {}", type, pipeline.toString()); // Logs the exact JSON sent to Mongo
+
+        try {
+            AggregateIterable<Document> aggregationResults = collection.aggregate(pipeline);
+
+            int count = 0;
+            for (Document doc : aggregationResults) {
+                count++;
+                log.debug("Found Document ID: {}", doc.get("_id"));
+
+                Product product = mongoTemplate.getConverter().read(Product.class, doc);
+                if (product != null && product.getVariants() != null && !product.getVariants().isEmpty()) {
+                    results.add(mapToDisplayDto(product, product.getVariants().get(0)));
+                } else {
+                    log.warn("Document found but has no variants or failed to map: {}", doc.get("_id"));
+                }
+            }
+
+            log.info("{} finished. Found {} raw documents, returned {} DTOs.", type, count, results.size());
+        } catch (Exception e) {
+            log.error("Error executing Atlas Search pipeline: ", e);
+        }
+
+        return results;
     }
 }

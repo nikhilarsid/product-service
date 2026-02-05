@@ -66,4 +66,14 @@ public class ProductController {
         productService.removeInventory(id, variantId);
         return ResponseEntity.ok(ApiResponse.success(null, "Product offer removed successfully"));
     }
+
+    @GetMapping("/search")
+    public ResponseEntity<ApiResponse<List<ProductDisplayDto>>> search(@RequestParam String q) {
+        return ResponseEntity.ok(ApiResponse.success(productService.searchProducts(q), "Search results fetched"));
+    }
+
+    @GetMapping("/suggest")
+    public ResponseEntity<ApiResponse<List<ProductDisplayDto>>> suggest(@RequestParam String q) {
+        return ResponseEntity.ok(ApiResponse.success(productService.suggestProducts(q), "Suggestions fetched"));
+    }
 }
