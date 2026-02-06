@@ -99,7 +99,6 @@ public class ProductServiceImpl implements ProductService {
         return displayList;
     }
 
-    // ✅ FIXED: Logic to filter by Merchant ID correctly
     @Override
     public List<ProductDisplayDto> getMerchantProducts() {
         String merchantId = getMerchantIdFromToken();
@@ -109,16 +108,12 @@ public class ProductServiceImpl implements ProductService {
         for (Product product : products) {
             if (product.getVariants() != null) {
                 for (ProductVariant variant : product.getVariants()) {
-
-                    // 🔍 Step 1: Find YOUR specific offer inside this variant
                     Optional<MerchantOffer> myOfferOpt = variant.getOffers().stream()
                             .filter(offer -> offer.getMerchantId().equals(merchantId))
                             .findFirst();
 
-                    // 🔍 Step 2: If found, use YOUR data (Price/Stock)
                     if (myOfferOpt.isPresent()) {
                         MerchantOffer myOffer = myOfferOpt.get();
-
                         String thumbnail = (variant.getImageUrls() != null && !variant.getImageUrls().isEmpty())
                                 ? variant.getImageUrls().get(0)
                                 : null;
@@ -132,14 +127,8 @@ public class ProductServiceImpl implements ProductService {
                                 .categories(product.getCategories())
                                 .attributes(variant.getAttributes())
                                 .variantId(variant.getVariantId())
-
-                                // ✅ FIX: Use YOUR price, not the lowest on market
                                 .lowestPrice(myOffer.getPrice())
-
-                                // ✅ FIX: Use YOUR stock count
-                                .totalMerchants(myOffer.getStock()) // We pass stock count here for the UI
-
-                                // ✅ FIX: Calculate 'In Stock' based on YOUR inventory
+                                .totalMerchants(myOffer.getStock())
                                 .inStock(myOffer.getStock() > 0)
                                 .build();
 
@@ -186,7 +175,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     public void updateInventory(Integer productId, String variantId, Double newPrice, Integer newStock) {
-        String merchantId = getMerchantIdFromToken();
+        String merchantId = getMerchantIdFromToken(); // Uses Token
 
         Product product = productRepository.findByProductId(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
@@ -232,6 +221,34 @@ public class ProductServiceImpl implements ProductService {
         productRepository.save(product);
     }
 
+    // ✅ NEW: Logic to reduce stock for a specific merchant during order placement
+    @Override
+    public void reduceStock(Integer productId, String variantId, String merchantId, Integer quantity) {
+        Product product = productRepository.findByProductId(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found: " + productId));
+
+        ProductVariant variant = product.getVariants().stream()
+                .filter(v -> v.getVariantId().equals(variantId))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("Variant not found: " + variantId));
+
+        // Find the specific merchant's offer
+        MerchantOffer offer = variant.getOffers().stream()
+                .filter(o -> o.getMerchantId().equals(merchantId))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Merchant " + merchantId + " does not sell this variant."));
+
+        // Check stock levels
+        if (offer.getStock() < quantity) {
+            throw new RuntimeException("Insufficient stock for Merchant " + merchantId);
+        }
+
+        // Update stock
+        offer.setStock(offer.getStock() - quantity);
+
+        productRepository.save(product);
+    }
+
     private String getMerchantIdFromToken() {
         String authHeader = httpRequest.getHeader("Authorization");
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
@@ -250,7 +267,6 @@ public class ProductServiceImpl implements ProductService {
         return null;
     }
 
-    // This method is for the PUBLIC page (Aggregates all sellers)
     private ProductDisplayDto mapToDisplayDto(Product product, ProductVariant variant) {
         Double minPrice = variant.getOffers().stream()
                 .map(MerchantOffer::getPrice)

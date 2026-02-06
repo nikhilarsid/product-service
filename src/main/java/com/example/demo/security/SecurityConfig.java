@@ -26,23 +26,23 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
-                // ✅ Enable CORS
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-
                 .authorizeHttpRequests(auth -> auth
-                        // 1. Public Access: Anyone can view/search individual products
+                        // 1. Public: View Products
                         .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
 
-                        // ✅ 2. FIX: Allow Batch Retrieve (POST) for Everyone
-                        // This allows the Cart Service or Frontend to fetch details for a list of IDs.
-                        // We permitAll() because product details are public info.
+                        // 2. Public: Batch retrieval (used by Cart/Order services)
                         .requestMatchers(HttpMethod.POST, "/api/v1/products/batch").permitAll()
 
-                        // 3. Restricted Access: Only Merchants can create new products
-                        // This matches all OTHER POST requests to /products
-                        .requestMatchers(HttpMethod.POST, "/api/v1/products/**").hasAuthority("ROLE_MERCHANT")
+                        // ✅ 3. CRITICAL FIX: Allow Order Service to call reduce-stock without User Token
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/products/reduce-stock/**").permitAll()
 
-                        // 4. Any other request requires authentication
+                        // 4. Merchant Only: Create/Update/Delete inventory
+                        .requestMatchers(HttpMethod.POST, "/api/v1/products/**").hasAuthority("ROLE_MERCHANT")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/products/inventory/**").hasAuthority("ROLE_MERCHANT")
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/products/inventory/**").hasAuthority("ROLE_MERCHANT")
+
+                        // 5. Everything else needs auth
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -51,25 +51,15 @@ public class SecurityConfig {
         return http.build();
     }
 
-    // ✅ CORS Configuration Bean
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-
-        // Allow your React Frontend Ports
         configuration.setAllowedOrigins(List.of("http://localhost:5173", "http://localhost:5174", "http://localhost:3001"));
-
-        // Allow standard HTTP methods
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-
-        // Allow Authorization header (for JWT) and Content-Type
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With"));
-
-        // Allow credentials (cookies/auth headers)
         configuration.setAllowCredentials(true);
-
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration); // Apply to all endpoints
+        source.registerCorsConfiguration("/**", configuration);
         return source;
     }
 }

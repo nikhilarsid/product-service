@@ -31,7 +31,6 @@ public class ProductController {
         return ResponseEntity.ok(ApiResponse.success(productService.getAllProducts(), "Fetched all variants"));
     }
 
-    // ✅ NEW: Dashboard for Merchant to see ONLY their items
     @GetMapping("/my-listings")
     public ResponseEntity<ApiResponse<List<ProductDisplayDto>>> getMyListings() {
         List<ProductDisplayDto> myListings = productService.getMerchantProducts();
@@ -67,6 +66,7 @@ public class ProductController {
         return ResponseEntity.ok(ApiResponse.success(null, "Product offer removed successfully"));
     }
 
+    // ✅ MERGED: Search and Suggest (From Remote)
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<List<ProductDisplayDto>>> search(@RequestParam String q) {
         return ResponseEntity.ok(ApiResponse.success(productService.searchProducts(q), "Search results fetched"));
@@ -75,5 +75,17 @@ public class ProductController {
     @GetMapping("/suggest")
     public ResponseEntity<ApiResponse<List<ProductDisplayDto>>> suggest(@RequestParam String q) {
         return ResponseEntity.ok(ApiResponse.success(productService.suggestProducts(q), "Suggestions fetched"));
+    }
+
+    // ✅ MERGED: Reduce Stock (Your Local Change)
+    @PutMapping("/reduce-stock/{id}")
+    public ResponseEntity<ApiResponse<Void>> reduceStock(
+            @PathVariable Integer id,
+            @RequestParam String variantId,
+            @RequestParam String merchantId,
+            @RequestParam Integer quantity) {
+
+        productService.reduceStock(id, variantId, merchantId, quantity);
+        return ResponseEntity.ok(ApiResponse.success(null, "Stock reduced successfully"));
     }
 }
