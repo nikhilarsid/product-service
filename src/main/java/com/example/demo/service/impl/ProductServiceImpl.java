@@ -26,6 +26,10 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+
 @Service
 @RequiredArgsConstructor
 public class ProductServiceImpl implements ProductService {
@@ -90,18 +94,15 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    public List<ProductDisplayDto> getAllProducts() {
-        List<Product> products = productRepository.findAll();
-        List<ProductDisplayDto> displayList = new ArrayList<>();
+    public Page<ProductDisplayDto> getAllProducts(Pageable pageable) {
+        Page<Product> productPage = productRepository.findAll(pageable);
 
-        for (Product product : products) {
-            if (product.getVariants() != null) {
-                for (ProductVariant variant : product.getVariants()) {
-                    displayList.add(mapToDisplayDto(product, variant));
-                }
-            }
-        }
-        return displayList;
+        List<ProductDisplayDto> displayList = productPage.getContent().stream()
+                .flatMap(product -> product.getVariants().stream()
+                        .map(variant -> mapToDisplayDto(product, variant)))
+                .collect(Collectors.toList());
+
+        return new PageImpl<>(displayList, pageable, productPage.getTotalElements());
     }
 
     @Override
