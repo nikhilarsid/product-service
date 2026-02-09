@@ -13,7 +13,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-
 @RestController
 @RequestMapping("/api/v1/products")
 @RequiredArgsConstructor
@@ -42,7 +41,6 @@ public class ProductController {
     public ResponseEntity<ApiResponse<ProductDetailDto>> getProductDetails(
             @PathVariable Integer id,
             @RequestParam String variantId) {
-
         ProductDetailDto details = productService.getProductDetails(id, variantId);
         return ResponseEntity.ok(ApiResponse.success(details, "Product details fetched"));
     }
@@ -53,7 +51,6 @@ public class ProductController {
             @RequestParam String variantId,
             @RequestParam(required = false) Double price,
             @RequestParam(required = false) Integer stock) {
-
         productService.updateInventory(id, variantId, price, stock);
         return ResponseEntity.ok(ApiResponse.success(null, "Inventory updated successfully"));
     }
@@ -62,12 +59,11 @@ public class ProductController {
     public ResponseEntity<ApiResponse<Void>> removeInventory(
             @PathVariable Integer id,
             @RequestParam String variantId) {
-
         productService.removeInventory(id, variantId);
         return ResponseEntity.ok(ApiResponse.success(null, "Product offer removed successfully"));
     }
 
-    // ✅ MERGED: Search and Suggest (From Remote)
+    // ✅ MERGED: Search and Suggest
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<List<ProductDisplayDto>>> search(@RequestParam String q) {
         return ResponseEntity.ok(ApiResponse.success(productService.searchProducts(q), "Search results fetched"));
@@ -78,20 +74,20 @@ public class ProductController {
         return ResponseEntity.ok(ApiResponse.success(productService.suggestProducts(q), "Suggestions fetched"));
     }
 
-    // ✅ MERGED: Reduce Stock (Your Local Change)
+    // ✅ MERGED: Reduce Stock
     @PutMapping("/reduce-stock/{id}")
     public ResponseEntity<ApiResponse<Void>> reduceStock(
             @PathVariable Integer id,
             @RequestParam String variantId,
             @RequestParam String merchantId,
             @RequestParam Integer quantity) {
-
         productService.reduceStock(id, variantId, merchantId, quantity);
         return ResponseEntity.ok(ApiResponse.success(null, "Stock reduced successfully"));
+    } // Added missing closing brace
 
     @PostMapping("/migrate-usps")
     public ResponseEntity<ApiResponse<String>> migrateUsps() {
-        productService.populateRandomUSPs(); // Ensure this is added to ProductService interface too
+        productService.populateRandomUSPs();
         return ResponseEntity.ok(ApiResponse.success(null, "Random USPs assigned to existing products"));
     }
 }
