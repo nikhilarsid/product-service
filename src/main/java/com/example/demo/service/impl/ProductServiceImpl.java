@@ -94,6 +94,21 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
+    public Page<ProductDisplayDto> getProductsByCategory(String category, Pageable pageable) {
+        // 1. Fetch Paginated Products from DB
+        Page<Product> productPage = productRepository.findByCategory(category, pageable);
+
+        // 2. Map Page<Product> -> Page<ProductDisplayDto>
+        return productPage.map(product -> {
+            // We use the first variant as the "display" variant for the card
+            if (product.getVariants() != null && !product.getVariants().isEmpty()) {
+                return mapToDisplayDto(product, product.getVariants().get(0));
+            }
+            return null;
+        });
+    }
+
+    @Override
     public Page<ProductDisplayDto> getAllProducts(Pageable pageable) {
         Page<Product> productPage = productRepository.findAll(pageable);
 
