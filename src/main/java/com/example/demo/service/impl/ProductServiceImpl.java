@@ -1,4 +1,5 @@
 package com.example.demo.service.impl;
+
 // Add these imports at the top
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.bson.Document;
@@ -24,9 +25,11 @@ import java.util.*;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+
 @Service
 @RequiredArgsConstructor
 public class ProductServiceImpl implements ProductService {
@@ -36,14 +39,14 @@ public class ProductServiceImpl implements ProductService {
     private final JwtService jwtService;
     private final HttpServletRequest httpRequest;
     private final MongoTemplate mongoTemplate; // Add to constructor
+
     @Override
     public ProductDisplayDto addProduct(ProductRequestDto request) {
         String merchantId = getMerchantIdFromToken();
         String normalizedName = request.getName().trim().toLowerCase().replaceAll("[^a-z0-9]", "");
 
         Optional<Product> existingProductOpt = productRepository.findByNormalizedNameAndBrandIgnoreCase(
-                normalizedName, request.getBrand()
-        );
+                normalizedName, request.getBrand());
 
         Product product;
         if (existingProductOpt.isPresent()) {
@@ -71,6 +74,9 @@ public class ProductServiceImpl implements ProductService {
             targetVariant.setAttributes(request.getAttributes());
             targetVariant.setImageUrls(request.getImageUrls());
             targetVariant.setOffers(new ArrayList<>());
+            if (product.getVariants() == null) {
+                product.setVariants(new ArrayList<>());
+            }
             product.getVariants().add(targetVariant);
         }
 
@@ -80,12 +86,26 @@ public class ProductServiceImpl implements ProductService {
                 merchantId,
                 "Merchant " + merchantId,
                 request.getPrice(),
-                request.getQuantity()
-        );
+                request.getQuantity());
         targetVariant.getOffers().add(offer);
 
         Product savedProduct = productRepository.save(product);
         return mapToDisplayDto(savedProduct, targetVariant);
+    }
+
+    @Override
+    public Page<ProductDisplayDto> getProductsByCategory(String category, Pageable pageable) {
+        // 1. Fetch Paginated Products from DB
+        Page<Product> productPage = productRepository.findByCategory(category, pageable);
+
+        // 2. Map Page<Product> -> Page<ProductDisplayDto>
+        return productPage.map(product -> {
+            // We use the first variant as the "display" variant for the card
+            if (product.getVariants() != null && !product.getVariants().isEmpty()) {
+                return mapToDisplayDto(product, product.getVariants().get(0));
+            }
+            return null;
+        });
     }
 
     @Override
@@ -209,8 +229,10 @@ public class ProductServiceImpl implements ProductService {
                 .findFirst()
                 .orElseThrow(() -> new RuntimeException("You do not have an active offer for this product."));
 
-        if (newPrice != null) offer.setPrice(newPrice);
-        if (newStock != null) offer.setStock(newStock);
+        if (newPrice != null)
+            offer.setPrice(newPrice);
+        if (newStock != null)
+            offer.setStock(newStock);
 
         productRepository.save(product);
     }
@@ -277,7 +299,8 @@ public class ProductServiceImpl implements ProductService {
     }
 
     private ProductVariant findMatchingVariant(Product product, Map<String, String> attributes) {
-        if (product.getVariants() == null) return null;
+        if (product.getVariants() == null)
+            return null;
         for (ProductVariant variant : product.getVariants()) {
             if (variant.getAttributes().equals(attributes)) {
                 return variant;
@@ -326,8 +349,7 @@ public class ProductServiceImpl implements ProductService {
                         .append("text", new Document("query", query)
                                 .append("path", Arrays.asList("name", "description", "brand", "categories"))
                                 .append("fuzzy", new Document("maxEdits", 1)))),
-                new Document("$limit", 20)
-        );
+                new Document("$limit", 20));
 
         return executeSearchPipeline(collection, pipeline, "Search");
     }
@@ -342,13 +364,13 @@ public class ProductServiceImpl implements ProductService {
                         .append("autocomplete", new Document("query", query)
                                 .append("path", "name")
                                 .append("fuzzy", new Document("maxEdits", 1)))),
-                new Document("$limit", 5)
-        );
+                new Document("$limit", 5));
 
         return executeSearchPipeline(collection, pipeline, "Suggest");
     }
 
-    private List<ProductDisplayDto> executeSearchPipeline(MongoCollection<Document> collection, List<Document> pipeline, String type) {
+    private List<ProductDisplayDto> executeSearchPipeline(MongoCollection<Document> collection, List<Document> pipeline,
+            String type) {
         List<ProductDisplayDto> results = new ArrayList<>();
 
         log.info("{} Pipeline: {}", type, pipeline.toString()); // Logs the exact JSON sent to Mongo

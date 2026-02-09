@@ -32,15 +32,26 @@ public class ProductController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<Page<ProductDisplayDto>>> getAllProducts(
+            @RequestParam(required = false) String category,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "4") int size) { // Default to 4
-
+            @RequestParam(defaultValue = "4") int size
+    ) {
         Pageable pageable = PageRequest.of(page, size);
-        return ResponseEntity.ok(ApiResponse.success(
-                productService.getAllProducts(pageable),
-                "Fetched page " + page
-        ));
+
+        Page<ProductDisplayDto> products;
+
+        // 1. If category is present, use the category + pagination logic
+        if (category != null && !category.trim().isEmpty()) {
+            products = productService.getProductsByCategory(category, pageable);
+        } else {
+            // 2. Otherwise, use the standard pagination logic
+            products = productService.getAllProducts(pageable);
+        }
+
+        return ResponseEntity.ok(ApiResponse.success(products, "Fetched products successfully"));
     }
+
+    
 
     @GetMapping("/my-listings")
     public ResponseEntity<ApiResponse<List<ProductDisplayDto>>> getMyListings() {

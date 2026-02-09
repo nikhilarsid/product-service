@@ -26,7 +26,7 @@ public interface ProductService {
     // ✅ MERGED: Search and Suggest methods
     List<ProductDisplayDto> searchProducts(String query);
     List<ProductDisplayDto> suggestProducts(String query);
-    // ✅ MERGED: For Order Service (Explicit Merchant ID)
+    Page<ProductDisplayDto> getProductsByCategory(String category, Pageable pageable);    // ✅ MERGED: For Order Service (Explicit Merchant ID)
     void reduceStock(Integer productId, String variantId, String merchantId, Integer quantity);
     void populateRandomUSPs();
 }
