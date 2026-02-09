@@ -10,6 +10,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 import java.util.List;
 
@@ -27,8 +31,15 @@ public class ProductController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<ProductDisplayDto>>> getAllProducts() {
-        return ResponseEntity.ok(ApiResponse.success(productService.getAllProducts(), "Fetched all variants"));
+    public ResponseEntity<ApiResponse<Page<ProductDisplayDto>>> getAllProducts(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "4") int size) { // Default to 4
+
+        Pageable pageable = PageRequest.of(page, size);
+        return ResponseEntity.ok(ApiResponse.success(
+                productService.getAllProducts(pageable),
+                "Fetched page " + page
+        ));
     }
 
     @GetMapping("/my-listings")
