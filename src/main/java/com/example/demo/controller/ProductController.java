@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+
 @RestController
 @RequestMapping("/api/v1/products")
 @RequiredArgsConstructor
@@ -87,5 +88,10 @@ public class ProductController {
 
         productService.reduceStock(id, variantId, merchantId, quantity);
         return ResponseEntity.ok(ApiResponse.success(null, "Stock reduced successfully"));
+
+    @PostMapping("/migrate-usps")
+    public ResponseEntity<ApiResponse<String>> migrateUsps() {
+        productService.populateRandomUSPs(); // Ensure this is added to ProductService interface too
+        return ResponseEntity.ok(ApiResponse.success(null, "Random USPs assigned to existing products"));
     }
 }

@@ -52,6 +52,8 @@ public class Product {
     // ✅ NEW: Global Specs (e.g. Screen Size, Processor)
     private Map<String, String> specs;
 
+    // ✅ NEW: Unique Selling Propositions
+    private List<String> usp;
     @Builder.Default
     private List<ProductVariant> variants = new ArrayList<>();
 }

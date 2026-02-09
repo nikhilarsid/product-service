@@ -54,6 +54,7 @@ public class ProductServiceImpl implements ProductService {
                     .description(request.getDescription())
                     .categories(request.getCategories())
                     .specs(request.getSpecs())
+                    .usp(request.getUsp())
                     .isActive(true)
                     .variants(new ArrayList<>())
                     .build();
@@ -166,13 +167,31 @@ public class ProductServiceImpl implements ProductService {
                 .description(product.getDescription())
                 .categories(product.getCategories())
                 .specs(product.getSpecs())
+                .usp(product.getUsp())
                 .imageUrls(variant.getImageUrls())
                 .variantId(variant.getVariantId())
                 .attributes(variant.getAttributes())
                 .sellers(sellerList)
                 .build();
     }
+    @Override
+    public void populateRandomUSPs() {
+        List<Product> products = productRepository.findAll();
+        List<String> poolOfUSPs = Arrays.asList(
+                "Premium Build Quality", "Eco-Friendly Materials", "Best in Class Warranty",
+                "Award Winning Design", "Fast Charging Support", "Water Resistant",
+                "Ultra Lightweight", "Limited Edition", "Energy Efficient"
+        );
 
+        for (Product product : products) {
+            if (product.getUsp() == null || product.getUsp().isEmpty()) {
+                List<String> randomUSPs = new ArrayList<>(poolOfUSPs);
+                Collections.shuffle(randomUSPs);
+                product.setUsp(randomUSPs.subList(0, 3));
+                productRepository.save(product); // Persist to MongoDB
+            }
+        }
+    }
     @Override
     public void updateInventory(Integer productId, String variantId, Double newPrice, Integer newStock) {
         String merchantId = getMerchantIdFromToken(); // Uses Token
@@ -292,6 +311,7 @@ public class ProductServiceImpl implements ProductService {
                 .lowestPrice(minPrice)
                 .totalMerchants(variant.getOffers().size())
                 .inStock(totalStock > 0)
+                .usp(product.getUsp())
                 .variantId(variant.getVariantId())
                 .build();
     }

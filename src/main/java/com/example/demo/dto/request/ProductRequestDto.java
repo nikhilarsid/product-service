@@ -15,7 +15,8 @@ public class ProductRequestDto {
 
     @NotBlank(message = "Brand is required")
     private String brand;
-
+    // ✅ NEW
+    private List<String> usp;
     private String description;
 
     // ✅ CHANGED: String -> List<String>

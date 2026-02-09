@@ -21,7 +21,7 @@ public class ProductDetailDto {
 
     // ✅ NEW: Global Specs
     private Map<String, String> specs;
-
+    private List<String> usp;
     private String variantId;
     private Map<String, String> attributes;
     private List<MerchantOfferDto> sellers;

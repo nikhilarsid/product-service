@@ -5,6 +5,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -19,6 +21,7 @@ import java.util.Collections;
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+    private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
     private final JwtService jwtService;
 
     @Override
@@ -35,33 +38,40 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         jwt = authHeader.substring(7);
         try {
             userEmail = jwtService.extractUsername(jwt);
-
-            // 1. Extract "MERCHANT" from the token
             String rawRole = jwtService.extractRole(jwt);
+
+            // DEBUG: Identify who is making the request and what their role is
+            log.info("Processing request for: {} with role: {}", userEmail, rawRole);
 
             if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 if (jwtService.isTokenValid(jwt, userEmail)) {
 
-                    // 2. CRITICAL FIX: Add "ROLE_" if it's missing
-                    // Token has "MERCHANT" -> We convert to "ROLE_MERCHANT"
+                    // Ensure role follows Spring Security's "ROLE_" prefix convention
                     String formattedRole = (rawRole != null && rawRole.startsWith("ROLE_"))
                             ? rawRole
                             : "ROLE_" + rawRole;
 
-                    User user = User.builder().email(userEmail).role(rawRole).build();
+                    log.debug("Granting authority: {}", formattedRole);
 
-                    // 3. Pass "ROLE_MERCHANT" to Spring Security
+                    User user = User.builder()
+                            .email(userEmail)
+                            .role(rawRole)
+                            .build();
+
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                             user,
                             null,
                             Collections.singletonList(new SimpleGrantedAuthority(formattedRole))
                     );
+
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
+                } else {
+                    log.warn("Invalid JWT token for user: {}", userEmail);
                 }
             }
         } catch (Exception e) {
-            System.out.println("Token Error: " + e.getMessage());
+            log.error("Authentication error: {}", e.getMessage());
         }
         filterChain.doFilter(request, response);
     }

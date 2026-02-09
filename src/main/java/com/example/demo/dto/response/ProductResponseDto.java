@@ -18,6 +18,7 @@ public class ProductResponseDto {
     private String brand;
     private List<String> imageUrls;
     private Map<String, String> attributes;
+    private List<String> usp;
     private Boolean isActive;
     private boolean inStock;
 }

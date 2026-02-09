@@ -36,6 +36,10 @@ public class SecurityConfig {
 
                         // ✅ 3. CRITICAL FIX: Allow Order Service to call reduce-stock without User Token
                         .requestMatchers(HttpMethod.PUT, "/api/v1/products/reduce-stock/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/products/migrate-usps").permitAll()
+                        // 3. Restricted Access: Only Merchants can create new products
+                        // This matches all OTHER POST requests to /products
+                        .requestMatchers(HttpMethod.POST, "/api/v1/products/**").hasAuthority("ROLE_MERCHANT")
 
                         // 4. Merchant Only: Create/Update/Delete inventory
                         .requestMatchers(HttpMethod.POST, "/api/v1/products/**").hasAuthority("ROLE_MERCHANT")

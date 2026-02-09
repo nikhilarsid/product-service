@@ -16,6 +16,7 @@ public class ProductDisplayDto {
 
     // ✅ CHANGED: String -> List<String>
     private List<String> categories;
+    private List<String> usp;
 
     private Map<String, String> attributes;
     private Double lowestPrice;
