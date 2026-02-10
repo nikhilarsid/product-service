@@ -16,12 +16,15 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.convert.MongoConverter;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 import java.util.*;
 
@@ -127,7 +130,7 @@ class ProductServiceTest {
 
         // Existing product but different attributes
         productRequestDto.setAttributes(Map.of("Color", "Red"));
-        
+
         when(productRepository.findByNormalizedNameAndBrandIgnoreCase(anyString(), anyString()))
                 .thenReturn(Optional.of(product));
         when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -140,19 +143,23 @@ class ProductServiceTest {
     }
 
     // ==========================================
-    // 2. Get All Products Tests
+    // 2. Get All Products Tests (FIXED)
     // ==========================================
 
     @Test
     @DisplayName("Get All Products - Success")
     void getAllProducts_Success() {
-        when(productRepository.findAll()).thenReturn(List.of(product));
+        // ✅ FIX: Added Pageable support
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<Product> mockPage = new PageImpl<>(List.of(product));
 
-        List<ProductDisplayDto> result = productService.getAllProducts();
+        when(productRepository.findAll(pageable)).thenReturn(mockPage);
+
+        Page<ProductDisplayDto> result = productService.getAllProducts(pageable);
 
         assertNotNull(result);
-        assertEquals(1, result.size());
-        assertEquals(PRODUCT_ID, result.get(0).getProductId());
+        assertEquals(1, result.getContent().size());
+        assertEquals(PRODUCT_ID, result.getContent().get(0).getProductId());
     }
 
     // ==========================================
@@ -313,36 +320,28 @@ class ProductServiceTest {
     // ==========================================
     // 8. Search & Suggest Tests
     // ==========================================
-    // Note: Mocking MongoTemplate aggregation can be verbose, so we verify pipeline
-    // execution.
 
     @Test
     @DisplayName("Search Products - Pipeline Verification using MongoTemplate")
     void searchProducts_Success() {
-        // Create mock collection and converter
         @SuppressWarnings("unchecked")
         var collection = mock(com.mongodb.client.MongoCollection.class);
         var converter = mock(MongoConverter.class);
 
-        // Mock MongoTemplate behavior
         when(mongoTemplate.getCollection("products")).thenReturn(collection);
         when(mongoTemplate.getConverter()).thenReturn(converter);
 
-        // Mock Aggregation Results
         var mockResult = mock(com.mongodb.client.AggregateIterable.class);
         when(collection.aggregate(anyList())).thenReturn(mockResult);
 
-        // Mock MongoCursor
         @SuppressWarnings("unchecked")
         com.mongodb.client.MongoCursor<Document> mongoCursor = mock(com.mongodb.client.MongoCursor.class);
-
         Document doc = new Document("_id", "123").append("name", "Test Product");
 
         when(mockResult.iterator()).thenReturn(mongoCursor);
         when(mongoCursor.hasNext()).thenReturn(true, false);
         when(mongoCursor.next()).thenReturn(doc);
 
-        // Mock Converter Mapping (Document -> Product)
         when(converter.read(eq(Product.class), any(Document.class))).thenReturn(product);
 
         List<ProductDisplayDto> results = productService.searchProducts("test");
@@ -355,17 +354,13 @@ class ProductServiceTest {
     @Test
     @DisplayName("Search Products - Exception Handling")
     void searchProducts_Exception() {
-        // Mock Collection
         @SuppressWarnings("unchecked")
         var collection = mock(com.mongodb.client.MongoCollection.class);
         when(mongoTemplate.getCollection("products")).thenReturn(collection);
-
-        // Throw exception from aggregate (inside try-catch)
         when(collection.aggregate(anyList())).thenThrow(new RuntimeException("Mongo Error"));
 
         List<ProductDisplayDto> results = productService.searchProducts("test");
 
-        // Should catch exception and return empty list
         assertNotNull(results);
         assertTrue(results.isEmpty());
     }
@@ -373,7 +368,6 @@ class ProductServiceTest {
     @Test
     @DisplayName("Search Products - Document Found but Mapping Failed/No Variants")
     void searchProducts_MappingFailure() {
-        // Mock Collection/Pipeline
         @SuppressWarnings("unchecked")
         var collection = mock(com.mongodb.client.MongoCollection.class);
         var converter = mock(MongoConverter.class);
@@ -383,7 +377,6 @@ class ProductServiceTest {
         var mockResult = mock(com.mongodb.client.AggregateIterable.class);
         when(collection.aggregate(anyList())).thenReturn(mockResult);
 
-        // Mock MongoCursor with 2 documents
         @SuppressWarnings("unchecked")
         com.mongodb.client.MongoCursor<Document> mongoCursor = mock(com.mongodb.client.MongoCursor.class);
         Document doc1 = new Document("_id", "1");
@@ -393,16 +386,12 @@ class ProductServiceTest {
         when(mongoCursor.hasNext()).thenReturn(true, true, false);
         when(mongoCursor.next()).thenReturn(doc1, doc2);
 
-        // Case 1: Product maps to null
         when(converter.read(eq(Product.class), eq(doc1))).thenReturn(null);
-
-        // Case 2: Product has no variants
         Product productNoVariants = Product.builder().productId(2).variants(new ArrayList<>()).build();
         when(converter.read(eq(Product.class), eq(doc2))).thenReturn(productNoVariants);
 
         List<ProductDisplayDto> results = productService.searchProducts("test");
 
-        // Should skip both and return empty
         assertNotNull(results);
         assertTrue(results.isEmpty());
     }
@@ -410,7 +399,6 @@ class ProductServiceTest {
     @Test
     @DisplayName("Suggest Products - Success")
     void suggestProducts_Success() {
-        // Mock Collection/Converter
         @SuppressWarnings("unchecked")
         var collection = mock(com.mongodb.client.MongoCollection.class);
         var converter = mock(MongoConverter.class);
@@ -444,11 +432,9 @@ class ProductServiceTest {
     @Test
     @DisplayName("Get Merchant Id - Missing/Invalid Header")
     void getMerchantProducts_InvalidHeader() {
-        // Case 1: Null Header
         when(httpRequest.getHeader("Authorization")).thenReturn(null);
         assertThrows(RuntimeException.class, () -> productService.getMerchantProducts());
 
-        // Case 2: Invalid Format
         when(httpRequest.getHeader("Authorization")).thenReturn("Basic 12345");
         assertThrows(RuntimeException.class, () -> productService.getMerchantProducts());
     }
@@ -456,13 +442,11 @@ class ProductServiceTest {
     @Test
     @DisplayName("Add Product - Null Variants List in Existing Product")
     void addProduct_NullVariantsSafeCheck() {
-         // Mock Authentication
         when(httpRequest.getHeader("Authorization")).thenReturn("Bearer token");
         when(jwtService.extractUsername("token")).thenReturn(MERCHANT_ID);
 
-        // Existing product with NULL variants list
         product.setVariants(null);
-        
+
         when(productRepository.findByNormalizedNameAndBrandIgnoreCase(anyString(), anyString()))
                 .thenReturn(Optional.of(product));
         when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -470,7 +454,6 @@ class ProductServiceTest {
         ProductDisplayDto result = productService.addProduct(productRequestDto);
 
         assertNotNull(result);
-        // Should initialize variants list and add one
         assertNotNull(product.getVariants());
         assertEquals(1, product.getVariants().size());
     }
@@ -478,28 +461,24 @@ class ProductServiceTest {
     @Test
     @DisplayName("Update Inventory - Partial Updates")
     void updateInventory_Partial() {
-        // Mock Authentication
         when(httpRequest.getHeader("Authorization")).thenReturn("Bearer token");
         when(jwtService.extractUsername("token")).thenReturn(MERCHANT_ID);
 
         when(productRepository.findByProductId(PRODUCT_ID)).thenReturn(Optional.of(product));
         when(productRepository.save(any(Product.class))).thenReturn(product);
 
-        // Update Only Price
         productService.updateInventory(PRODUCT_ID, VARIANT_ID, 200.0, null);
         assertEquals(200.0, product.getVariants().get(0).getOffers().get(0).getPrice());
-        assertEquals(10, product.getVariants().get(0).getOffers().get(0).getStock()); // Unchanged
+        assertEquals(10, product.getVariants().get(0).getOffers().get(0).getStock());
 
-        // Update Only Stock
         productService.updateInventory(PRODUCT_ID, VARIANT_ID, null, 20);
-        assertEquals(200.0, product.getVariants().get(0).getOffers().get(0).getPrice()); // Unchanged
+        assertEquals(200.0, product.getVariants().get(0).getOffers().get(0).getPrice());
         assertEquals(20, product.getVariants().get(0).getOffers().get(0).getStock());
     }
 
     @Test
     @DisplayName("Remove Inventory - Unauthorized / Offer Not Found")
     void removeInventory_Unauthorized() {
-        // Mock Authentication for DIFFERENT merchant
         when(httpRequest.getHeader("Authorization")).thenReturn("Bearer token");
         when(jwtService.extractUsername("token")).thenReturn("other-merchant");
 
@@ -510,5 +489,55 @@ class ProductServiceTest {
         });
 
         assertEquals("Offer not found or you are not authorized to delete it.", exception.getMessage());
+    }
+
+    // ==========================================
+    // 10. Populate Random USPs Tests (ADDED for coverage)
+    // ==========================================
+
+    @Test
+    @DisplayName("Populate Random USPs - Success")
+    void populateRandomUSPs_Success() {
+        product.setUsp(null);
+        when(productRepository.findAll()).thenReturn(List.of(product));
+
+        productService.populateRandomUSPs();
+
+        assertNotNull(product.getUsp());
+        assertEquals(3, product.getUsp().size());
+        verify(productRepository, times(1)).save(product);
+    }
+
+    @Test
+    @DisplayName("Populate Random USPs - Skip if Already Present")
+    void populateRandomUSPs_Skip() {
+        product.setUsp(List.of("Existing USP"));
+        when(productRepository.findAll()).thenReturn(List.of(product));
+
+        productService.populateRandomUSPs();
+
+        assertEquals(1, product.getUsp().size());
+        assertEquals("Existing USP", product.getUsp().get(0));
+        verify(productRepository, times(0)).save(any(Product.class));
+    }
+
+    // ==========================================
+    // 11. Variant Matching Logic (ADDED for coverage)
+    // ==========================================
+
+    @Test
+    @DisplayName("Add Product - Matches Existing Variant")
+    void addProduct_MatchesExistingVariant() {
+        when(httpRequest.getHeader("Authorization")).thenReturn("Bearer token");
+        when(jwtService.extractUsername("token")).thenReturn("NEW_MERCHANT");
+
+        when(productRepository.findByNormalizedNameAndBrandIgnoreCase(anyString(), anyString()))
+                .thenReturn(Optional.of(product));
+        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        productService.addProduct(productRequestDto);
+
+        assertEquals(1, product.getVariants().size());
+        assertEquals(2, product.getVariants().get(0).getOffers().size());
     }
 }
