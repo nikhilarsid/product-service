@@ -28,18 +28,22 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth
-                        // 1. Public: View Products
+                        // ✅ FIX 1: Allow Error Endpoint (so you see real error messages instead of 403)
+                        .requestMatchers("/error").permitAll()
+
+                        // ✅ FIX 2: Specific Secured Endpoints MUST be defined BEFORE the public wildcard
+                        // This ensures 'my-listings' requires a token/role before the general 'view products' rule kicks in
+                        .requestMatchers(HttpMethod.GET, "/api/v1/products/my-listings").hasAuthority("ROLE_MERCHANT")
+
+                        // 1. Public: View Products (General Wildcard)
                         .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
 
-                        // 2. Public: Batch retrieval (used by Cart/Order services)
+                        // 2. Public: Batch retrieval
                         .requestMatchers(HttpMethod.POST, "/api/v1/products/batch").permitAll()
 
-                        // ✅ 3. CRITICAL FIX: Allow Order Service to call reduce-stock without User Token
+                        // 3. System Access: Order Service calls
                         .requestMatchers(HttpMethod.PUT, "/api/v1/products/reduce-stock/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/products/migrate-usps").permitAll()
-                        // 3. Restricted Access: Only Merchants can create new products
-                        // This matches all OTHER POST requests to /products
-                        .requestMatchers(HttpMethod.POST, "/api/v1/products/**").hasAuthority("ROLE_MERCHANT")
 
                         // 4. Merchant Only: Create/Update/Delete inventory
                         .requestMatchers(HttpMethod.POST, "/api/v1/products/**").hasAuthority("ROLE_MERCHANT")
@@ -62,7 +66,7 @@ public class SecurityConfig {
                 "http://localhost:5173",
                 "http://localhost:5174",
                 "http://localhost:3001",
-                "https://ecom-frontend-simpl.vercel.app"  // ← ADD THIS LINE
+                "https://ecom-frontend-simpl.vercel.app"
         ));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With"));
