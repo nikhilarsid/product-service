@@ -369,33 +369,42 @@ public class ProductServiceImpl implements ProductService {
         return executeSearchPipeline(collection, pipeline, "Suggest");
     }
 
-    private List<ProductDisplayDto> executeSearchPipeline(MongoCollection<Document> collection, List<Document> pipeline,
-            String type) {
-        List<ProductDisplayDto> results = new ArrayList<>();
+    private List<ProductDisplayDto> executeSearchPipeline(MongoCollection<Document> collection, List<Document> pipeline, String type) {
+    List<ProductDisplayDto> results = new ArrayList<>();
 
-        log.info("{} Pipeline: {}", type, pipeline.toString()); // Logs the exact JSON sent to Mongo
+    log.info("{} Pipeline: {}", type, pipeline.toString());
 
-        try {
-            AggregateIterable<Document> aggregationResults = collection.aggregate(pipeline);
+    try {
+        AggregateIterable<Document> aggregationResults = collection.aggregate(pipeline);
 
-            int count = 0;
-            for (Document doc : aggregationResults) {
-                count++;
-                log.debug("Found Document ID: {}", doc.get("_id"));
+        int docCount = 0;
+        for (Document doc : aggregationResults) {
+            docCount++;
+            
+            // 1. Convert the BSON Document to your Java Product Object
+            Product product = mongoTemplate.getConverter().read(Product.class, doc);
 
-                Product product = mongoTemplate.getConverter().read(Product.class, doc);
-                if (product != null && product.getVariants() != null && !product.getVariants().isEmpty()) {
-                    results.add(mapToDisplayDto(product, product.getVariants().get(0)));
-                } else {
-                    log.warn("Document found but has no variants or failed to map: {}", doc.get("_id"));
+            if (product != null && product.getVariants() != null && !product.getVariants().isEmpty()) {
+                
+                // ✅ FIX: Iterate through ALL variants to add them as separate search results
+                for (ProductVariant variant : product.getVariants()) {
+                    
+                    // Optional: Filter out variants that have absolutely no offers/sellers if you want
+                    // if (variant.getOffers() == null || variant.getOffers().isEmpty()) continue;
+
+                    // 2. Map specific variant to DTO and add to results
+                    // This ensures "iPhone 17 Red" and "iPhone 17 Blue" appear as separate items
+                    results.add(mapToDisplayDto(product, variant));
                 }
+            } else {
+                log.warn("Document found but has no variants or failed to map: {}", doc.get("_id"));
             }
-
-            log.info("{} finished. Found {} raw documents, returned {} DTOs.", type, count, results.size());
-        } catch (Exception e) {
-            log.error("Error executing Atlas Search pipeline: ", e);
         }
 
-        return results;
+        log.info("{} finished. Found {} parent documents, returned {} total items.", type, docCount, results.size());
+    } catch (Exception e) {
+        log.error("Error executing Atlas Search pipeline: ", e);
     }
+
+    return results;
 }
