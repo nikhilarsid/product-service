@@ -194,6 +194,7 @@ public class ProductServiceImpl implements ProductService {
                 .sellers(sellerList)
                 .build();
     }
+
     @Override
     public void populateRandomUSPs() {
         List<Product> products = productRepository.findAll();
@@ -212,6 +213,7 @@ public class ProductServiceImpl implements ProductService {
             }
         }
     }
+
     @Override
     public void updateInventory(Integer productId, String variantId, Double newPrice, Integer newStock) {
         String merchantId = getMerchantIdFromToken(); // Uses Token
@@ -370,41 +372,42 @@ public class ProductServiceImpl implements ProductService {
     }
 
     private List<ProductDisplayDto> executeSearchPipeline(MongoCollection<Document> collection, List<Document> pipeline, String type) {
-    List<ProductDisplayDto> results = new ArrayList<>();
+        List<ProductDisplayDto> results = new ArrayList<>();
 
-    log.info("{} Pipeline: {}", type, pipeline.toString());
+        log.info("{} Pipeline: {}", type, pipeline.toString());
 
-    try {
-        AggregateIterable<Document> aggregationResults = collection.aggregate(pipeline);
+        try {
+            AggregateIterable<Document> aggregationResults = collection.aggregate(pipeline);
 
-        int docCount = 0;
-        for (Document doc : aggregationResults) {
-            docCount++;
-            
-            // 1. Convert the BSON Document to your Java Product Object
-            Product product = mongoTemplate.getConverter().read(Product.class, doc);
+            int docCount = 0;
+            for (Document doc : aggregationResults) {
+                docCount++;
 
-            if (product != null && product.getVariants() != null && !product.getVariants().isEmpty()) {
-                
-                // ✅ FIX: Iterate through ALL variants to add them as separate search results
-                for (ProductVariant variant : product.getVariants()) {
-                    
-                    // Optional: Filter out variants that have absolutely no offers/sellers if you want
-                    // if (variant.getOffers() == null || variant.getOffers().isEmpty()) continue;
+                // 1. Convert the BSON Document to your Java Product Object
+                Product product = mongoTemplate.getConverter().read(Product.class, doc);
 
-                    // 2. Map specific variant to DTO and add to results
-                    // This ensures "iPhone 17 Red" and "iPhone 17 Blue" appear as separate items
-                    results.add(mapToDisplayDto(product, variant));
+                if (product != null && product.getVariants() != null && !product.getVariants().isEmpty()) {
+
+                    // ✅ FIX: Iterate through ALL variants to add them as separate search results
+                    for (ProductVariant variant : product.getVariants()) {
+
+                        // Optional: Filter out variants that have absolutely no offers/sellers if you want
+                        // if (variant.getOffers() == null || variant.getOffers().isEmpty()) continue;
+
+                        // 2. Map specific variant to DTO and add to results
+                        // This ensures "iPhone 17 Red" and "iPhone 17 Blue" appear as separate items
+                        results.add(mapToDisplayDto(product, variant));
+                    }
+                } else {
+                    log.warn("Document found but has no variants or failed to map: {}", doc.get("_id"));
                 }
-            } else {
-                log.warn("Document found but has no variants or failed to map: {}", doc.get("_id"));
             }
+
+            log.info("{} finished. Found {} parent documents, returned {} total items.", type, docCount, results.size());
+        } catch (Exception e) {
+            log.error("Error executing Atlas Search pipeline: ", e);
         }
 
-        log.info("{} finished. Found {} parent documents, returned {} total items.", type, docCount, results.size());
-    } catch (Exception e) {
-        log.error("Error executing Atlas Search pipeline: ", e);
+        return results;
     }
-
-    return results;
 }
