@@ -348,9 +348,18 @@ public class ProductServiceImpl implements ProductService {
 
         List<Document> pipeline = Arrays.asList(
                 new Document("$search", new Document("index", "default")
-                        .append("text", new Document("query", query)
-                                .append("path", Arrays.asList("name", "description", "brand", "categories"))
-                                .append("fuzzy", new Document("maxEdits", 1)))),
+                        .append("compound", new Document()
+                                .append("should", Arrays.asList(
+                                        // Autocomplete for the name field (handles "ipho")
+                                        new Document("autocomplete", new Document("query", query)
+                                                .append("path", "name")),
+
+                                        // Standard text search for other fields (handles full words)
+                                        new Document("text", new Document("query", query)
+                                                .append("path", Arrays.asList("brand", "categories", "description"))
+                                                .append("fuzzy", new Document("maxEdits", 1)))
+                                ))
+                        )),
                 new Document("$limit", 20));
 
         return executeSearchPipeline(collection, pipeline, "Search");

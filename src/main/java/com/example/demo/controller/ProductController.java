@@ -30,6 +30,7 @@ public class ProductController {
         return new ResponseEntity<>(ApiResponse.success(response, "Product listing updated successfully"), HttpStatus.CREATED);
     }
 
+
     @GetMapping
     public ResponseEntity<ApiResponse<Page<ProductDisplayDto>>> getAllProducts(
             @RequestParam(required = false) String category,
@@ -58,6 +59,7 @@ public class ProductController {
         List<ProductDisplayDto> myListings = productService.getMerchantProducts();
         return ResponseEntity.ok(ApiResponse.success(myListings, "Merchant listings fetched"));
     }
+
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<ProductDetailDto>> getProductDetails(
@@ -111,5 +113,17 @@ public class ProductController {
     public ResponseEntity<ApiResponse<String>> migrateUsps() {
         productService.populateRandomUSPs();
         return ResponseEntity.ok(ApiResponse.success(null, "Random USPs assigned to existing products"));
+    }
+
+    @GetMapping("/verify")
+    public ResponseEntity<ApiResponse<Boolean>> verifyProduct(
+            @RequestParam String name,
+            @RequestParam String brand) {
+
+        // Log the incoming check for debugging
+//        log.info("🔍 [VERIFY] Checking existence for Name: {} and Brand: {}", name, brand);
+        // Hardcoded to return true for now as requested
+        boolean exists = true;
+        return ResponseEntity.ok(ApiResponse.success(exists, "Product existence verified (Mocked)"));
     }
 }

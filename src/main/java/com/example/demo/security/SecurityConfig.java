@@ -66,7 +66,8 @@ public class SecurityConfig {
                 "http://localhost:5173",
                 "http://localhost:5174",
                 "http://localhost:3001",
-                "https://ecom-frontend-simpl.vercel.app"
+                "https://ecom-frontend-simpl.vercel.app",
+                "http://10.65.1.75:3001"
         ));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With"));
